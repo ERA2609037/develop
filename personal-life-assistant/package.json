@@ -1,0 +1,19 @@
+{
+  "name": "personal-life-assistant",
+  "version": "1.0.0",
+  "description": "个人生活助手 - Todo List / 记账 / 日程 / 日记 (Vue + Express + SQLite + Electron)",
+  "main": "main.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "electron": "electron ."
+  },
+  "dependencies": {
+    "express": "^4.22.3",
+    "sql.js": "^1.15.2",
+    "three": "^0.160.0",
+    "vue": "^3.5.44"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0"
+  }
+}

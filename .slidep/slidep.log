@@ -1,0 +1,2 @@
+=== boot pid=1963 ts=2026-10-31 15:23:01.240 cwd=/Users/aihe/Desktop/develop argv=/Users/aihe/.workbuddy-ai/binaries/node/versions/22.22.2-6/lib/node_modules/@tencent/slidep/dist/index.js inspect /Users/aihe/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/wxid_wyemau24g23o12_f9af/temp/drag/Xtech_Project_Lab_Bilingual.pptx --out /tmp/slidep-inspect.wNS31Z ===
+[2026-10-31 15:23:01.236] [INFO ] [pid=1963] [server-url] baseUrl=http://localhost:39099 source=default

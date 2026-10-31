@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>个人生活助手 · Personal Life Assistant</title>
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <!-- 机器人吉祥物共用的 SVG 渐变定义 -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <linearGradient id="rgBody" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#22d3ee" />
+        <stop offset="1" stop-color="#a78bfa" />
+      </linearGradient>
+      <radialGradient id="rgShadow" cx="0.5" cy="0.5" r="0.5">
+        <stop offset="0" stop-color="#22d3ee" stop-opacity="0.5" />
+        <stop offset="1" stop-color="#22d3ee" stop-opacity="0" />
+      </radialGradient>
+    </defs>
+  </svg>
+
+  <div id="app">
+    <!-- 顶部状态栏 -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-logo">◆</span>
+        <div class="brand-text">
+          <strong>个人生活助手</strong>
+          <small>// Personal Life Assistant</small>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <span class="status-dot">●</span><span class="status-text">ONLINE</span>
+        <span class="clock">{{ clock }}</span>
+        <button class="theme-toggle" @click="toggleTheme" :title="theme==='dark'?'切换为亮色':'切换为暗色'">
+          <span v-if="theme==='dark'">☀ 亮色</span>
+          <span v-else>🌙 暗色</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- 内容区 -->
+    <main class="content">
+      <transition name="view" mode="out-in">
+        <component :is="view" :key="view"></component>
+      </transition>
+    </main>
+
+    <!-- 全局轻提示 -->
+    <transition name="toast">
+      <div v-if="toastMsg" class="toast">{{ toastMsg }}</div>
+    </transition>
+  </div>
+
+  <!-- ============ 首页（卡片式） ============ -->
+  <script type="text/x-template" id="tpl-home">
+    <div class="home">
+      <section class="hero">
+        <div class="hero-text">
+          <h1>你好，欢迎回来 <span class="cursor">_</span></h1>
+          <p class="hero-sub">// 一个安静而强大的个人生活中枢：待办、记账、日程、日记，尽在掌握。</p>
+          <p class="hero-hint">// 右上角是我的座驾 —— 双击变身，长按打开菜单</p>
+        </div>
+        <div class="hero-companion">
+          <div id="companion-mount" class="companion-mount"
+               title="单击问候 · 双击变身 · 长按菜单"></div>
+          <div class="companion-hint">双击变身 · 长按菜单</div>
+        </div>
+      </section>
+
+      <section class="stat-strip">
+        <div class="stat-card">
+          <span class="stat-label">待办进度</span>
+          <span class="stat-value">{{ stats.todoDone }}/{{ stats.todoTotal }}</span>
+          <span class="stat-bar"><i :style="{width: todoPct + '%'}"></i></span>
+        </div>
+        <div class="stat-card accent-cyan">
+          <span class="stat-label">本月结余</span>
+          <span class="stat-value">¥{{ fmt(stats.balance) }}</span>
+        </div>
+        <div class="stat-card accent-violet">
+          <span class="stat-label">今日日程</span>
+          <span class="stat-value">{{ stats.scheduleToday }}</span>
+        </div>
+        <div class="stat-card accent-green">
+          <span class="stat-label">累计日记</span>
+          <span class="stat-value">{{ stats.journalTotal }}</span>
+        </div>
+      </section>
+
+      <section class="ai-home-card" @click="$root.go('ai')">
+        <div class="ai-home-glow"></div>
+        <div class="ai-home-top">
+          <span class="ai-home-badge"><i></i> AI DAILY BRIEFING</span>
+          <span class="ai-home-status">{{ ai.configured ? 'AI 已连接' : '本地引擎' }}</span>
+        </div>
+        <h3 class="ai-home-greet">{{ ai.greeting }}，这是你今天的智能简报</h3>
+        <p class="ai-home-summary">{{ ai.headline }}</p>
+        <div class="ai-home-metrics">
+          <span><b>{{ ai.pendingTasks }}</b> 待办</span>
+          <span><b>{{ ai.upcomingEvents }}</b> 待开始日程</span>
+          <span v-if="ai.overdueTasks" class="warn"><b>{{ ai.overdueTasks }}</b> 逾期</span>
+        </div>
+        <p class="ai-home-rec" v-if="ai.recommendation">
+          <span class="ai-home-rec-tag">{{ ai.recommendation.tag }}</span>
+          {{ ai.recommendation.title }}
+        </p>
+        <button class="ai-home-btn" @click.stop="$root.go('ai')">打开完整日报 →</button>
+      </section>
+
+      <p class="section-label">// 功能模块</p>
+      <section class="feature-grid">
+        <button class="feature-card" v-for="f in features" :key="f.view" @click="$root.go(f.view)">
+          <span class="feature-icon" :style="{background:f.grad}">{{ f.icon }}</span>
+          <span class="feature-title">{{ f.title }}</span>
+          <span class="feature-desc">{{ f.desc }}</span>
+          <span class="feature-metrics" v-if="f.metrics">
+            <span class="fm-item" v-for="m in f.metrics" :key="m.label">
+              <b>{{ m.value }}</b><small>{{ m.label }}</small>
+            </span>
+          </span>
+          <span class="feature-badge" v-if="f.badge !== undefined">{{ f.badge }}</span>
+        </button>
+      </section>
+    </div>
+  </script>
+
+  <!-- ============ Todo List ============ -->
+  <script type="text/x-template" id="tpl-todos">
+    <div class="module">
+      <div class="module-head">
+        <button class="back" @click="$root.go('home')">← 首页</button>
+        <h2>✅ Todo List</h2>
+        <div class="tabs">
+          <button :class="{active:filter==='all'}" @click="filter='all'">全部</button>
+          <button :class="{active:filter==='active'}" @click="filter='active'">进行中</button>
+          <button :class="{active:filter==='done'}" @click="filter='done'">已完成</button>
+        </div>
+      </div>
+
+      <form class="add-form" @submit.prevent="add">
+        <input v-model="form.title" placeholder="要做点什么？回车添加…" required />
+        <select v-model="form.priority">
+          <option>高</option><option>中</option><option>低</option>
+        </select>
+        <input type="date" v-model="form.due_date" />
+        <button class="btn-primary" type="submit">+ 添加</button>
+      </form>
+
+      <ul class="list">
+        <li v-for="(t, i) in filtered" :key="t.id" :class="{done:t.done}" :style="{animationDelay:(i*45)+'ms'}">
+          <label class="check">
+            <input type="checkbox" :checked="t.done" @change="toggle(t)" />
+            <span class="box"></span>
+          </label>
+          <div class="list-main">
+            <span class="list-title">{{ t.title }}</span>
+            <span class="list-meta">
+              <span class="tag" :class="'pri-'+t.priority">{{ t.priority }}</span>
+              <span v-if="t.due_date">📅 {{ t.due_date }}</span>
+            </span>
+          </div>
+          <button class="del" @click="remove(t.id)" title="删除">✕</button>
+        </li>
+        <li v-if="filtered.length===0" class="empty">
+          <EmptyState text="暂无任务，享受一下清静吧" />
+        </li>
+      </ul>
+    </div>
+  </script>
+
+  <!-- ============ 记账 ============ -->
+  <script type="text/x-template" id="tpl-expenses">
+    <div class="module">
+      <div class="module-head">
+        <button class="back" @click="$root.go('home')">← 首页</button>
+        <h2>💰 记账</h2>
+      </div>
+
+      <section class="summary">
+        <div class="sum-card out"><span>支出</span><b>¥{{ fmt(totals.expense) }}</b></div>
+        <div class="sum-card in"><span>收入</span><b>¥{{ fmt(totals.income) }}</b></div>
+        <div class="sum-card bal"><span>结余</span><b>¥{{ fmt(totals.balance) }}</b></div>
+      </section>
+
+      <form class="add-form" @submit.prevent="add">
+        <input type="number" step="0.01" v-model="form.amount" placeholder="金额" required />
+        <select v-model="form.type">
+          <option>支出</option><option>收入</option>
+        </select>
+        <input v-model="form.category" placeholder="分类" list="cat-list" />
+        <datalist id="cat-list">
+          <option>餐饮</option><option>交通</option><option>购物</option>
+          <option>工资</option><option>娱乐</option><option>其他</option>
+        </datalist>
+        <input type="date" v-model="form.date" required />
+        <input v-model="form.note" placeholder="备注(可选)" />
+        <button class="btn-primary" type="submit">+ 记录</button>
+      </form>
+
+      <ul class="list">
+        <li v-for="(e, i) in items" :key="e.id" :style="{animationDelay:(i*45)+'ms'}">
+          <span class="ex-icon" :class="e.type==='收入'?'in':'out'">{{ e.type==='收入'?'＋':'－' }}</span>
+          <div class="list-main">
+            <span class="list-title">{{ e.category }} <small v-if="e.note">· {{ e.note }}</small></span>
+            <span class="list-meta"><span class="tag cat">{{ e.date }}</span></span>
+          </div>
+          <span class="ex-amount" :class="e.type==='收入'?'in':'out'">
+            {{ e.type==='收入'?'+':'-' }}¥{{ fmt(e.amount) }}
+          </span>
+          <button class="del" @click="remove(e.id)" title="删除">✕</button>
+        </li>
+        <li v-if="items.length===0" class="empty">
+          <EmptyState text="还没有账单记录" />
+        </li>
+      </ul>
+    </div>
+  </script>
+
+  <!-- ============ 日程 ============ -->
+  <script type="text/x-template" id="tpl-schedules">
+    <div class="module">
+      <div class="module-head">
+        <button class="back" @click="$root.go('home')">← 首页</button>
+        <h2>📅 日程</h2>
+      </div>
+
+      <form class="add-form" @submit.prevent="add">
+        <input v-model="form.title" placeholder="日程标题" required />
+        <input v-model="form.location" placeholder="地点(可选)" />
+        <input type="datetime-local" v-model="form.start_time" required />
+        <input type="datetime-local" v-model="form.end_time" />
+        <input v-model="form.note" placeholder="备注(可选)" />
+        <button class="btn-primary" type="submit">+ 安排</button>
+      </form>
+
+      <ul class="list timeline">
+        <li v-for="(s, i) in sorted" :key="s.id" :style="{animationDelay:(i*45)+'ms'}">
+          <span class="tl-dot"></span>
+          <div class="list-main">
+            <span class="list-title">{{ s.title }}</span>
+            <span class="list-meta">
+              <span class="tag cat">🕒 {{ fmtTime(s.start_time) }}<span v-if="s.end_time"> → {{ fmtTime(s.end_time) }}</span></span>
+              <span v-if="s.location" class="tag">📍 {{ s.location }}</span>
+              <span v-if="s.note" class="muted">· {{ s.note }}</span>
+            </span>
+          </div>
+          <button class="del" @click="remove(s.id)" title="删除">✕</button>
+        </li>
+        <li v-if="items.length===0" class="empty">
+          <EmptyState text="日程表空空如也" />
+        </li>
+      </ul>
+    </div>
+  </script>
+
+  <!-- ============ 日记 ============ -->
+  <script type="text/x-template" id="tpl-journals">
+    <div class="module">
+      <div class="module-head">
+        <button class="back" @click="$root.go('home')">← 首页</button>
+        <h2>📓 日记</h2>
+      </div>
+
+      <form class="add-form journal-form" @submit.prevent="add">
+        <div class="jf-row">
+          <input v-model="form.title" placeholder="今天想记点什么？(标题)" required />
+          <select v-model="form.mood">
+            <option>开心</option><option>平静</option><option>低落</option>
+            <option>愤怒</option><option>疲惫</option>
+          </select>
+          <input type="date" v-model="form.date" required />
+        </div>
+        <textarea v-model="form.content" placeholder="写下你的心情与故事…" rows="3"></textarea>
+        <button class="btn-primary" type="submit">+ 写下来</button>
+      </form>
+
+      <ul class="list journal-list">
+        <li v-for="(j, i) in items" :key="j.id" :style="{animationDelay:(i*45)+'ms'}">
+          <div class="j-head">
+            <span class="j-mood">{{ moodEmoji(j.mood) }}</span>
+            <span class="list-title">{{ j.title }}</span>
+            <span class="tag cat">{{ j.date }}</span>
+            <button class="del" @click="remove(j.id)" title="删除">✕</button>
+          </div>
+          <p class="j-content">{{ j.content || '（无内容）' }}</p>
+        </li>
+        <li v-if="items.length===0" class="empty">
+          <EmptyState text="还没有日记，记录下今天吧" />
+        </li>
+      </ul>
+    </div>
+  </script>
+
+  <!-- ============ Life Dashboard ============ -->
+  <script type="text/x-template" id="tpl-life">
+    <div class="module life">
+      <div class="module-head">
+        <button class="back" @click="$root.go('home')">← 首页</button>
+        <h2>🧬 Life Dashboard</h2>
+        <div class="life-date">
+          <button class="pill-btn" @click="shift(-1)" title="前一天">‹</button>
+          <input type="date" :value="date" :max="today" @change="onDateChange" />
+          <button class="pill-btn" @click="shift(1)" :disabled="isToday" title="后一天">›</button>
+          <button class="pill-btn today-btn" v-if="!isToday" @click="setToday">回到今天</button>
+        </div>
+      </div>
+
+      <nav class="life-tabs">
+        <button v-for="t in tabs" :key="t.key" :class="{active: tab===t.key}" @click="setTab(t.key)">{{ t.label }}</button>
+      </nav>
+
+      <div class="life-sub">
+        <span class="life-datelabel">{{ dateLabel }}</span>
+        <span v-if="loading" class="life-loading">同步中…</span>
+      </div>
+      <p v-if="err" class="life-err">{{ err }}</p>
+
+      <!-- ========== A. 每日概览 ========== -->
+      <section v-show="tab==='overview'" class="life-pane">
+        <div class="ov-grid">
+          <div class="ov-card">
+            <span class="ov-label">😴 睡眠</span>
+            <b class="ov-value">{{ sleepMin ? fmtDuration(sleepMin) : '—' }}</b>
+            <small>{{ day.sleep ? qualityOf(day.sleep.quality) : '未记录' }}</small>
+          </div>
+          <div class="ov-card">
+            <span class="ov-label">🏃 运动</span>
+            <b class="ov-value">{{ day.exerciseTotal ? fmtDuration(day.exerciseTotal) : '—' }}</b>
+            <small>{{ day.exercise.length }} 条记录</small>
+          </div>
+          <div class="ov-card">
+            <span class="ov-label">💧 饮水</span>
+            <b class="ov-value">{{ day.waterTotal }}<em>ml</em></b>
+            <span class="ov-bar"><i :style="{width: waterPct + '%'}"></i></span>
+            <small>目标 {{ day.waterGoal || 2000 }} ml · {{ waterPct }}%</small>
+          </div>
+          <div class="ov-card">
+            <span class="ov-label">🙂 心情</span>
+            <b class="ov-value">{{ topMood ? topMood.emoji : '—' }}</b>
+            <small>{{ topMood ? topMood.label : '未记录' }}<span v-if="day.moods.length > 1"> · 共 {{ day.moods.length }} 条</span></small>
+          </div>
+          <div class="ov-card">
+            <span class="ov-label">⚡ 精力</span>
+            <b class="ov-value">{{ day.energy ? day.energy.level : '—' }}<em v-if="day.energy">/5</em></b>
+            <small>{{ day.energy ? energyLevels[day.energy.level-1].label : '未记录' }}</small>
+          </div>
+        </div>
+
+        <div class="life-card">
+          <div class="lc-head">
+            <h3>近 14 天并列对照</h3>
+            <span class="lc-note">仅并列展示各项记录，不代表因果关系</span>
+          </div>
+          <div class="cmp-table" v-if="compareRows.length">
+            <div class="cmp-row cmp-head">
+              <span>日期</span><span>睡眠</span><span>运动</span><span>饮水</span><span>心情</span><span>精力</span>
+            </div>
+            <div class="cmp-row" v-for="r in compareRows" :key="r.date">
+              <span class="cmp-date">{{ r.date.slice(5) }}</span>
+              <span>{{ r.sleep ? fmtDuration(r.sleep) : '—' }}</span>
+              <span>{{ r.exercise ? r.exercise + 'm' : '—' }}</span>
+              <span>{{ r.water ? r.water + 'ml' : '—' }}</span>
+              <span>{{ r.mood ? r.mood.toFixed(1) : '—' }}</span>
+              <span>{{ r.energy ? r.energy + '/5' : '—' }}</span>
+            </div>
+          </div>
+          <p v-else class="lc-empty">近 14 天还没有生活记录，从下面的标签页开始吧。</p>
+        </div>
+      </section>
+
+      <!-- ========== B. 睡眠 ========== -->
+      <section v-show="tab==='sleep'" class="life-pane">
+        <div class="life-grid-2">
+          <div class="life-card">
+            <div class="lc-head"><h3>记录睡眠</h3><span class="lc-note">{{ date }}</span></div>
+            <form class="life-form" @submit.prevent="saveSleep">
+              <label class="lf-field">
+                <span>入睡时间</span>
+                <input type="time" v-model="sleepForm.bedtime" required />
+              </label>
+              <label class="lf-field">
+                <span>起床时间</span>
+                <input type="time" v-model="sleepForm.wake_time" required />
+              </label>
+              <label class="lf-field">
+                <span>睡眠质量</span>
+                <select v-model="sleepForm.quality">
+                  <option v-for="q in qualities" :key="q.key" :value="q.key">{{ q.label }}</option>
+                </select>
+              </label>
+              <label class="lf-field full">
+                <span>备注（可选）</span>
+                <input v-model="sleepForm.note" placeholder="例如：中途醒了一次" />
+              </label>
+              <div class="lf-actions">
+                <span class="lf-preview">
+                  时长预览 <b>{{ sleepPreviewMin() ? fmtDuration(sleepPreviewMin()) : '—' }}</b>
+                  <em v-if="sleepForm.bedtime && sleepForm.wake_time && sleepPreviewMin() === 0">入睡与起床时间相同</em>
+                </span>
+                <button class="btn-primary" type="submit">{{ day.sleep ? '更新记录' : '保存记录' }}</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="life-card stat-mini">
+            <span class="ov-label">7 日平均睡眠</span>
+            <b class="ov-value">{{ sum7 && sum7.sleep.avgMin ? fmtDuration(sum7.sleep.avgMin) : '—' }}</b>
+            <small>{{ sum7 ? sum7.sleep.count : 0 }} 天有记录</small>
+            <div class="q-dist" v-if="sum7">
+              <span v-for="q in qualities" :key="q.key">
+                <i :class="'q-' + q.key"></i>{{ q.label }} {{ sum7.sleep.distribution[q.key] }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="life-grid-2">
+          <div class="life-card">
+            <div class="lc-head"><h3>本周睡眠</h3><span class="lc-note">近 7 天 · 分钟</span></div>
+            <LifeBarChart :data="sleepBars7" unit=" 分钟" :goal="420" color="var(--accent-2)" />
+          </div>
+          <div class="life-card">
+            <div class="lc-head"><h3>30 天趋势</h3><span class="lc-note">有记录的日期连线</span></div>
+            <LifeLineChart :data="sleepLine30" unit=" 分钟" color="var(--accent-2)" />
+          </div>
+        </div>
+
+        <div class="life-card">
+          <div class="lc-head"><h3>历史记录</h3><span class="lc-note">最近 14 条</span></div>
+          <ul class="life-list" v-if="hist.sleep.length">
+            <li v-for="r in hist.sleep" :key="r.id">
+              <template v-if="isEditing('sleep', r.id)">
+                <div class="edit-row">
+                  <input type="date" v-model="editing.form.date" />
+                  <input type="time" v-model="editing.form.bedtime" />
+                  <input type="time" v-model="editing.form.wake_time" />
+                  <select v-model="editing.form.quality">
+                    <option v-for="q in qualities" :key="q.key" :value="q.key">{{ q.label }}</option>
+                  </select>
+                  <input v-model="editing.form.note" placeholder="备注" />
+                  <button class="mini-btn ok" @click="commitEdit">保存</button>
+                  <button class="mini-btn" @click="cancelEdit">取消</button>
+                </div>
+              </template>
+              <template v-else>
+                <span class="ll-date">{{ r.date }}</span>
+                <span class="ll-main">{{ r.bedtime }} → {{ r.wake_time }}</span>
+                <span class="ll-tag">{{ fmtDuration(r.duration_min) }}</span>
+                <span class="ll-tag">{{ qualityOf(r.quality) }}</span>
+                <span class="ll-note">{{ r.note }}</span>
+                <button class="mini-btn" @click="startEdit('sleep', r)">编辑</button>
+                <button class="del" @click="delSleep(r.id)" title="删除">✕</button>
+              </template>
+            </li>
+          </ul>
+          <p v-else class="lc-empty">还没有睡眠记录。</p>
+        </div>
+      </section>
+
+      <!-- ========== C. 运动 ========== -->
+      <section v-show="tab==='exercise'" class="life-pane">
+        <div class="life-card">
+          <div class="lc-head"><h3>添加运动</h3><span class="lc-note">{{ date }}</span></div>
+          <form class="life-form" @submit.prevent="addExercise">
+            <label class="lf-field">
+              <span>运动类型</span>
+              <select v-model="exForm.type">
+                <option v-for="t in exTypes" :key="t.key" :value="t.key">{{ t.emoji }} {{ t.label }}</option>
+              </select>
+            </label>
+            <label class="lf-field">
+              <span>时长（分钟）</span>
+              <input type="number" min="1" max="1440" v-model="exForm.duration_min" placeholder="30" required />
+            </label>
+            <label class="lf-field">
+              <span>强度</span>
+              <select v-model="exForm.intensity">
+                <option v-for="i in intensities" :key="i.key" :value="i.key">{{ i.label }}</option>
+              </select>
+            </label>
+            <label class="lf-field full">
+              <span>备注（可选）</span>
+              <input v-model="exForm.note" placeholder="例如：夜跑 5 公里" />
+            </label>
+            <div class="lf-actions">
+              <span class="lf-preview">今日累计 <b>{{ fmtDuration(day.exerciseTotal) }}</b></span>
+              <button class="btn-primary" type="submit">+ 添加</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="ov-grid ov-grid-4">
+          <div class="ov-card"><span class="ov-label">今日运动</span><b class="ov-value">{{ fmtDuration(day.exerciseTotal) }}</b></div>
+          <div class="ov-card"><span class="ov-label">本周累计</span><b class="ov-value">{{ sum7 ? fmtDuration(sum7.exercise.totalMin) : '—' }}</b></div>
+          <div class="ov-card"><span class="ov-label">本月累计</span><b class="ov-value">{{ sumMonth ? fmtDuration(sumMonth.exercise.totalMin) : '—' }}</b></div>
+          <div class="ov-card"><span class="ov-label">本月活跃天数</span><b class="ov-value">{{ sumMonth ? sumMonth.exercise.activeDays : '—' }}</b></div>
+        </div>
+
+        <div class="life-grid-2">
+          <div class="life-card">
+            <div class="lc-head"><h3>本周活动量</h3><span class="lc-note">近 7 天 · 分钟</span></div>
+            <LifeBarChart :data="exBars7" unit=" 分钟" color="var(--success)" />
+          </div>
+          <div class="life-card">
+            <div class="lc-head"><h3>本月类型分布</h3><span class="lc-note">按累计时长</span></div>
+            <div class="type-dist" v-if="sumMonth && sumMonth.exercise.byType.length">
+              <div class="td-row" v-for="t in sumMonth.exercise.byType" :key="t.type">
+                <span class="td-emoji">{{ exOf(t.type).emoji }}</span>
+                <span class="td-label">{{ exOf(t.type).label }}</span>
+                <span class="td-track"><i :style="{width: typePct(t.minutes) + '%'}"></i></span>
+                <b>{{ fmtDuration(t.minutes) }}</b>
+              </div>
+            </div>
+            <p v-else class="lc-empty">本月还没有运动记录。</p>
+          </div>
+        </div>
+
+        <div class="life-card">
+          <div class="lc-head"><h3>运动历史</h3><span class="lc-note">最近 20 条</span></div>
+          <ul class="life-list" v-if="hist.exercise.length">
+            <li v-for="r in hist.exercise" :key="r.id">
+              <template v-if="isEditing('exercise', r.id)">
+                <div class="edit-row">
+                  <input type="date" v-model="editing.form.date" />
+                  <select v-model="editing.form.type">
+                    <option v-for="t in exTypes" :key="t.key" :value="t.key">{{ t.label }}</option>
+                  </select>
+                  <input type="number" min="1" v-model="editing.form.duration_min" />
+                  <select v-model="editing.form.intensity">
+                    <option v-for="i in intensities" :key="i.key" :value="i.key">{{ i.label }}</option>
+                  </select>
+                  <input v-model="editing.form.note" placeholder="备注" />
+                  <button class="mini-btn ok" @click="commitEdit">保存</button>
+                  <button class="mini-btn" @click="cancelEdit">取消</button>
+                </div>
+              </template>
+              <template v-else>
+                <span class="ll-date">{{ r.date }}</span>
+                <span class="ll-emoji">{{ exOf(r.type).emoji }}</span>
+                <span class="ll-main">{{ exOf(r.type).label }}</span>
+                <span class="ll-tag">{{ r.duration_min }} 分钟</span>
+                <span class="ll-tag">{{ intensityOf(r.intensity) }}</span>
+                <span class="ll-note">{{ r.note }}</span>
+                <button class="mini-btn" @click="startEdit('exercise', r)">编辑</button>
+                <button class="del" @click="delExercise(r.id)" title="删除">✕</button>
+              </template>
+            </li>
+          </ul>
+          <p v-else class="lc-empty">还没有运动记录。</p>
+        </div>
+      </section>
+
+      <!-- ========== D. 饮水 ========== -->
+      <section v-show="tab==='water'" class="life-pane">
+        <div class="life-grid-2">
+          <div class="life-card water-card">
+            <div class="lc-head"><h3>今日饮水</h3><span class="lc-note">{{ date }}</span></div>
+            <div class="water-main">
+              <LifeRing :value="day.waterTotal" :max="day.waterGoal || 2000"
+                        :color="waterGoalReached ? 'var(--success)' : 'var(--accent-1)'">
+                <text x="55" y="54" class="ring-num">{{ day.waterTotal }}</text>
+                <text x="55" y="70" class="ring-sub">/ {{ day.waterGoal || 2000 }} ml</text>
+              </LifeRing>
+              <div class="water-side">
+                <p class="water-status" :class="{ok: waterGoalReached}">
+                  {{ waterGoalReached ? '✅ 今日目标已达成' : '还差 ' + ((day.waterGoal || 2000) - day.waterTotal) + ' ml' }}
+                </p>
+                <div class="quick-water">
+                  <button v-for="ml in quickWater" :key="ml" @click="addWater(ml)">+{{ ml }}</button>
+                </div>
+                <form class="water-custom" @submit.prevent="addWater(waterCustom)">
+                  <input type="number" min="1" max="5000" v-model="waterCustom" placeholder="自定义 ml" />
+                  <button class="mini-btn ok" type="submit">添加</button>
+                </form>
+                <button class="mini-btn" @click="undoWater" :disabled="!day.water.length">↶ 撤销最近一条</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="life-card">
+            <div class="lc-head"><h3>每日目标</h3></div>
+            <form class="life-form" @submit.prevent="saveGoal">
+              <label class="lf-field full">
+                <span>每日饮水目标（ml）</span>
+                <input type="number" min="100" max="10000" v-model="goalInput" />
+              </label>
+              <div class="lf-actions">
+                <span class="lf-preview">默认 2000 ml</span>
+                <button class="btn-primary" type="submit">保存目标</button>
+              </div>
+            </form>
+            <div class="lc-head" style="margin-top:18px"><h3>近 7 天</h3><span class="lc-note">ml / 天</span></div>
+            <LifeBarChart :data="waterBars7" unit=" ml" :goal="day.waterGoal || 2000" color="var(--accent-1)" />
+          </div>
+        </div>
+
+        <div class="life-card">
+          <div class="lc-head"><h3>今日饮水明细</h3><span class="lc-note">共 {{ day.water.length }} 条</span></div>
+          <ul class="life-list" v-if="hist.water.length">
+            <li v-for="r in hist.water" :key="r.id">
+              <template v-if="isEditing('water', r.id)">
+                <div class="edit-row">
+                  <input type="time" v-model="editing.form.time" />
+                  <input type="number" min="1" max="5000" v-model="editing.form.amount_ml" />
+                  <button class="mini-btn ok" @click="commitEdit">保存</button>
+                  <button class="mini-btn" @click="cancelEdit">取消</button>
+                </div>
+              </template>
+              <template v-else>
+                <span class="ll-date">{{ r.time || '--:--' }}</span>
+                <span class="ll-main">💧 {{ r.amount_ml }} ml</span>
+                <button class="mini-btn" @click="startEdit('water', r)">编辑</button>
+                <button class="del" @click="delWater(r.id)" title="删除">✕</button>
+              </template>
+            </li>
+          </ul>
+          <p v-else class="lc-empty">今天还没有喝水记录，点上面的快捷按钮开始吧。</p>
+        </div>
+      </section>
+
+      <!-- ========== E. 心情 ========== -->
+      <section v-show="tab==='mood'" class="life-pane">
+        <div class="life-card">
+          <div class="lc-head"><h3>记录心情</h3><span class="lc-note">{{ date }} · 一天可记录多次</span></div>
+          <div class="mood-picker">
+            <button v-for="m in moods" :key="m.key" :class="{active: moodForm.mood === m.key}"
+                    :style="moodForm.mood === m.key ? { borderColor: m.color, background: m.color + '1f' } : null"
+                    @click="moodForm.mood = m.key">
+              <span class="mp-emoji">{{ m.emoji }}</span>
+              <span class="mp-label">{{ m.label }}</span>
+            </button>
+          </div>
+          <form class="life-form" @submit.prevent="addMood">
+            <label class="lf-field full">
+              <span>描述（可选）</span>
+              <input v-model="moodForm.note" placeholder="发生了什么？" />
+            </label>
+            <label class="lf-field full">
+              <span>标签（可选，逗号分隔）</span>
+              <input v-model="moodForm.tags" placeholder="工作,睡眠,天气" />
+            </label>
+            <div class="lf-actions">
+              <span class="lf-preview">今日已记录 <b>{{ day.moods.length }}</b> 条</span>
+              <button class="btn-primary" type="submit">+ 记录心情</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="life-grid-2">
+          <div class="life-card">
+            <div class="lc-head"><h3>心情日历</h3><span class="lc-note">{{ date.slice(0,7) }}</span></div>
+            <div class="mood-cal">
+              <div class="mc-head"><span v-for="w in ['一','二','三','四','五','六','日']" :key="w">{{ w }}</span></div>
+              <div class="mc-grid">
+                <div v-for="c in calendar" :key="c.key" class="mc-cell"
+                     :class="{ empty: c.empty, istoday: c.date === today, has: !!c.mood }"
+                     :style="c.mood ? { background: moodOf(c.mood).color + '22', borderColor: moodOf(c.mood).color + '66' } : null"
+                     :title="c.date ? (c.mood ? c.date + ' · ' + moodOf(c.mood).label : c.date + ' · 无记录') : ''">
+                  <span v-if="!c.empty">{{ c.day }}</span>
+                  <i v-if="c.mood" :style="{ background: moodOf(c.mood).color }"></i>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="life-card">
+            <div class="lc-head"><h3>心情分布</h3><span class="lc-note">近 {{ range }} 天 · 共 {{ moodTotal }} 条</span></div>
+            <div class="mood-dist" v-if="moodTotal">
+              <div class="md-row" v-for="m in moods" :key="m.key">
+                <span class="md-emoji">{{ m.emoji }}</span>
+                <span class="md-label">{{ m.label }}</span>
+                <span class="md-track"><i :style="{ width: pctMood(m.key) + '%', background: m.color }"></i></span>
+                <b class="md-num">{{ moodCounts[m.key] || 0 }}</b>
+              </div>
+            </div>
+            <p v-else class="lc-empty">该区间还没有心情记录。</p>
+            <div class="lc-head" style="margin-top:16px"><h3>30 天心情走势</h3><span class="lc-note">1-5 分</span></div>
+            <LifeLineChart :data="moodLine30" unit=" 分" :min="1" :max="5" color="var(--accent-2)" />
+          </div>
+        </div>
+
+        <div class="life-card">
+          <div class="lc-head"><h3>心情历史</h3><span class="lc-note">最近 20 条</span></div>
+          <ul class="life-list" v-if="hist.mood.length">
+            <li v-for="r in hist.mood" :key="r.id">
+              <template v-if="isEditing('mood', r.id)">
+                <div class="edit-row">
+                  <input type="date" v-model="editing.form.date" />
+                  <input type="time" v-model="editing.form.time" />
+                  <select v-model="editing.form.mood">
+                    <option v-for="m in moods" :key="m.key" :value="m.key">{{ m.label }}</option>
+                  </select>
+                  <input v-model="editing.form.note" placeholder="描述" />
+                  <input v-model="editing.form.tags" placeholder="标签" />
+                  <button class="mini-btn ok" @click="commitEdit">保存</button>
+                  <button class="mini-btn" @click="cancelEdit">取消</button>
+                </div>
+              </template>
+              <template v-else>
+                <span class="ll-date">{{ r.date }} {{ r.time || '' }}</span>
+                <span class="ll-emoji">{{ moodOf(r.mood).emoji }}</span>
+                <span class="ll-main">{{ moodOf(r.mood).label }}</span>
+                <span class="ll-note">{{ r.note }}</span>
+                <span class="ll-tags" v-if="r.tags">
+                  <i v-for="t in r.tags.split(',')" :key="t">{{ t }}</i>
+                </span>
+                <button class="mini-btn" @click="startEdit('mood', r)">编辑</button>
+                <button class="del" @click="delMood(r.id)" title="删除">✕</button>
+              </template>
+            </li>
+          </ul>
+          <p v-else class="lc-empty">还没有心情记录。</p>
+        </div>
+      </section>
+
+      <!-- ========== F. 精力 ========== -->
+      <section v-show="tab==='energy'" class="life-pane">
+        <div class="life-grid-2">
+          <div class="life-card">
+            <div class="lc-head"><h3>今日精力</h3><span class="lc-note">{{ date }}</span></div>
+            <div class="energy-picker">
+              <button v-for="e in energyLevels" :key="e.level"
+                      :class="{ active: energyForm.level === e.level }"
+                      @click="energyForm.level = e.level">
+                <b>{{ e.level }}</b><small>{{ e.label }}</small>
+              </button>
+            </div>
+            <form class="life-form" @submit.prevent="saveEnergy()">
+              <label class="lf-field full">
+                <span>备注（可选）</span>
+                <input v-model="energyForm.note" placeholder="例如：午休后状态很好" />
+              </label>
+              <div class="lf-actions">
+                <span class="lf-preview">{{ day.energy ? '今日已记录' : '今日未记录' }}</span>
+                <button class="btn-primary" type="submit">{{ day.energy ? '更新记录' : '保存记录' }}</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="life-card stat-mini">
+            <span class="ov-label">本周平均精力</span>
+            <b class="ov-value">{{ sum7 && sum7.energy.avg ? sum7.energy.avg : '—' }}<em v-if="sum7 && sum7.energy.avg">/5</em></b>
+            <small>{{ sum7 ? sum7.energy.count : 0 }} 天有记录</small>
+            <span class="ov-label" style="margin-top:14px">本月平均精力</span>
+            <b class="ov-value">{{ sumMonth && sumMonth.energy.avg ? sumMonth.energy.avg : '—' }}<em v-if="sumMonth && sumMonth.energy.avg">/5</em></b>
+            <small>{{ sumMonth ? sumMonth.energy.count : 0 }} 天有记录</small>
+          </div>
+        </div>
+
+        <div class="life-card">
+          <div class="lc-head"><h3>30 天精力趋势</h3><span class="lc-note">1-5 级</span></div>
+          <LifeLineChart :data="energyLine30" unit=" 级" :min="1" :max="5" color="var(--success)" />
+        </div>
+
+        <div class="life-card">
+          <div class="lc-head"><h3>精力历史</h3><span class="lc-note">最近 14 条</span></div>
+          <ul class="life-list" v-if="hist.energy.length">
+            <li v-for="r in hist.energy" :key="r.id">
+              <span class="ll-date">{{ r.date }}</span>
+              <span class="ll-main">⚡ {{ r.level }}/5 · {{ energyLevels[r.level-1].label }}</span>
+              <span class="ll-note">{{ r.note }}</span>
+              <button class="del" @click="delEnergy(r.id)" title="删除">✕</button>
+            </li>
+          </ul>
+          <p v-else class="lc-empty">还没有精力记录。</p>
+        </div>
+      </section>
+
+      <!-- ========== G. 统计 ========== -->
+      <section v-show="tab==='stats'" class="life-pane">
+        <div class="life-range">
+          <button v-for="r in [7,30,90]" :key="r" :class="{active: range === r}" @click="range = r">{{ r }} 天</button>
+          <span class="lc-note" v-if="sumRange">区间 {{ sumRange.range.from }} ~ {{ sumRange.range.to }}</span>
+        </div>
+
+        <div class="ov-grid ov-grid-4" v-if="sumRange">
+          <div class="ov-card"><span class="ov-label">平均睡眠</span><b class="ov-value">{{ sumRange.sleep.avgMin ? fmtDuration(sumRange.sleep.avgMin) : '—' }}</b><small>{{ sumRange.sleep.count }} 天有记录</small></div>
+          <div class="ov-card"><span class="ov-label">运动总时长</span><b class="ov-value">{{ fmtDuration(sumRange.exercise.totalMin) }}</b><small>{{ sumRange.exercise.activeDays }} 个活跃日</small></div>
+          <div class="ov-card"><span class="ov-label">日均饮水</span><b class="ov-value">{{ sumRange.water.avgMl }}<em>ml</em></b><small>目标达成率 {{ sumRange.water.goalRate }}%</small></div>
+          <div class="ov-card"><span class="ov-label">平均精力</span><b class="ov-value">{{ sumRange.energy.avg || '—' }}<em v-if="sumRange.energy.avg">/5</em></b><small>{{ sumRange.energy.count }} 天有记录</small></div>
+        </div>
+
+        <div class="life-grid-2" v-if="sumRange">
+          <div class="life-card">
+            <div class="lc-head"><h3>睡眠趋势</h3><span class="lc-note">分钟</span></div>
+            <LifeLineChart :data="lineFrom(sumRange.sleep.series,'minutes')" unit=" 分钟" color="var(--accent-2)" />
+          </div>
+          <div class="life-card">
+            <div class="lc-head"><h3>运动量趋势</h3><span class="lc-note">分钟</span></div>
+            <LifeLineChart :data="lineFrom(sumRange.exercise.series,'minutes')" unit=" 分钟" color="var(--success)" />
+          </div>
+          <div class="life-card">
+            <div class="lc-head"><h3>饮水趋势</h3><span class="lc-note">ml</span></div>
+            <LifeLineChart :data="lineFrom(sumRange.water.series,'ml')" unit=" ml" :min="0" color="var(--accent-1)" />
+          </div>
+          <div class="life-card">
+            <div class="lc-head"><h3>心情分布</h3><span class="lc-note">共 {{ sumRange.mood.total }} 条</span></div>
+            <div class="mood-dist" v-if="sumRange.mood.total">
+              <div class="md-row" v-for="m in moods" :key="m.key">
+                <span class="md-emoji">{{ m.emoji }}</span>
+                <span class="md-label">{{ m.label }}</span>
+                <span class="md-track"><i :style="{ width: pctMood(m.key) + '%', background: m.color }"></i></span>
+                <b class="md-num">{{ moodCounts[m.key] || 0 }}</b>
+              </div>
+            </div>
+            <p v-else class="lc-empty">该区间没有心情记录。</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== H. 月度报告 ========== -->
+      <section v-show="tab==='stats'" class="life-pane">
+        <div class="life-card report">
+          <div class="lc-head">
+            <h3>月度生活报告</h3>
+            <span class="lc-note">{{ date.slice(0,7) }}</span>
+          </div>
+          <div v-if="sumMonth">
+            <div class="report-grid">
+              <div><span>平均睡眠</span><b>{{ sumMonth.sleep.avgMin ? fmtDuration(sumMonth.sleep.avgMin) : '—' }}</b></div>
+              <div><span>运动总时长</span><b>{{ fmtDuration(sumMonth.exercise.totalMin) }}</b></div>
+              <div><span>运动频次</span><b>{{ sumMonth.exercise.count }} 次 / {{ sumMonth.exercise.activeDays }} 天</b></div>
+              <div><span>饮水达标率</span><b>{{ sumMonth.water.goalRate }}%</b></div>
+              <div><span>平均心情分</span><b>{{ sumMonth.mood.avgScore || '—' }}</b></div>
+              <div><span>平均精力</span><b>{{ sumMonth.energy.avg || '—' }}</b></div>
+            </div>
+            <p class="report-text">{{ reportText }}</p>
+            <div class="lc-head" style="margin-top:16px"><h3>本月睡眠分布</h3><span class="lc-note">分钟 / 天</span></div>
+            <LifeBarChart :data="monthBars" unit=" 分钟" :goal="420" color="var(--accent-2)" />
+          </div>
+          <p v-else class="lc-empty">加载中…</p>
+        </div>
+      </section>
+    </div>
+  </script>
+
+  <!-- ============ AI Daily Briefing ============ -->
+  <script type="text/x-template" id="tpl-ai">
+    <div class="module ai-briefing">
+      <div class="module-head">
+        <button class="back" @click="$root.go('home')">← 首页</button>
+        <h2>🧠 AI Daily Briefing</h2>
+        <div class="ai-head-actions">
+          <span class="ai-provider-badge" :class="status.configured ? 'on' : 'local'">
+            <i></i>{{ status.configured ? 'AI 已连接' : '本地引擎' }}
+          </span>
+          <button class="pill-btn" @click="openSettings" title="设置">⚙ 设置</button>
+          <button class="pill-btn" @click="regenerate" :disabled="loading" title="重新生成">↻ 重新生成</button>
+        </div>
+      </div>
+
+      <div class="ai-notice" v-if="!status.configured">
+        <b>未配置 AI 模型</b> · 当前由内置<strong>本地分析引擎</strong>基于你的真实数据生成，数值与结论均可追溯。
+        在服务端设置环境变量 <code>AI_API_KEY</code>（OpenAI 兼容）后，会自动切换为 AI 叙事；密钥仅存于服务端，不会下发到前端。
+      </div>
+
+      <nav class="ai-tabs">
+        <button v-for="t in tabs" :key="t.key" :class="{active: tab===t.key}" @click="switchTab(t.key)">{{ t.label }}</button>
+      </nav>
+
+      <!-- ========== 报告 ========== -->
+      <div v-if="tab !== 'history'" class="ai-report">
+        <div v-if="loading" class="ai-loading">
+          <span class="ai-spin"></span> 正在生成{{ tab==='daily' ? '日报' : tab==='weekly' ? '周报' : '月报' }}…
+        </div>
+        <p v-else-if="error" class="ai-error">⚠ {{ error }}</p>
+
+        <template v-else-if="report">
+          <!-- Hero -->
+          <section class="ai-hero">
+            <div class="ai-hero-left">
+              <p class="ai-greet-en">{{ report.greetingEn }}</p>
+              <h1 class="ai-greet">{{ report.greeting }}<span class="cursor">_</span></h1>
+              <p class="ai-date">{{ report.period.label }} · {{ report.title }}</p>
+              <p class="ai-headline">{{ report.headline }}</p>
+              <div class="ai-meta-row">
+                <span class="ai-source-badge" :class="'src-' + report.source">{{ sourceLabel }}</span>
+                <span class="ai-gen-at">生成于 {{ fmtTime(report.generatedAt) }}</span>
+                <span class="ai-saved" v-if="report.id">已保存 · #{{ report.id }}</span>
+              </div>
+            </div>
+            <div class="ai-overview">
+              <div class="ai-ov" v-for="o in report.overview" :key="o.label" :class="'tone-' + o.tone">
+                <b>{{ o.value }}</b>
+                <span>{{ o.label }}</span>
+                <small v-if="o.hint">{{ o.hint }}</small>
+              </div>
+            </div>
+          </section>
+
+          <!-- Sections -->
+          <section class="ai-section" v-for="s in report.sections" :key="s.key">
+            <div class="ai-sec-head">
+              <span class="ai-sec-icon">{{ s.icon }}</span>
+              <h3>{{ s.title }}</h3>
+            </div>
+            <p class="ai-sec-summary">{{ s.summary }}</p>
+
+            <div class="ai-sec-stats" v-if="s.stats && s.stats.length">
+              <div class="ai-stat" v-for="st in s.stats" :key="st.label">
+                <b>{{ st.value }}</b><span>{{ st.label }}</span>
+              </div>
+            </div>
+
+            <ul class="ai-bullets" v-if="s.bullets && s.bullets.length">
+              <li v-for="(b, i) in s.bullets" :key="i" :class="'b-' + b.kind">
+                <span class="ai-b-dot"></span>{{ b.text }}
+              </li>
+            </ul>
+
+            <ul class="ai-items" v-if="s.items && s.items.length">
+              <li v-for="(it, i) in s.items" :key="i" :class="{ bad: it.bad }">
+                <span class="ai-item-title">{{ it.title }}</span>
+                <span class="ai-item-meta" v-if="it.meta">{{ it.meta }}</span>
+              </li>
+            </ul>
+
+            <div class="ai-charts" v-if="s.charts && s.charts.length">
+              <div class="ai-chart" v-for="(ch, i) in s.charts" :key="i">
+                <p class="ai-chart-title">{{ ch.title }}</p>
+                <component :is="ch.kind === 'line' ? 'LifeLineChart' : 'LifeBarChart'"
+                           :data="ch.data" :unit="ch.unit" :color="ch.color"></component>
+              </div>
+            </div>
+          </section>
+
+          <!-- Recommendations -->
+          <section class="ai-recs" v-if="report.recommendations && report.recommendations.length">
+            <div class="ai-sec-head"><span class="ai-sec-icon">✨</span><h3>AI 建议</h3></div>
+            <div class="ai-rec-grid">
+              <div class="ai-rec" v-for="(r, i) in report.recommendations" :key="i">
+                <span class="ai-rec-tag">{{ r.tag }}</span>
+                <h4>{{ r.title }}</h4>
+                <p>{{ r.detail }}</p>
+              </div>
+            </div>
+          </section>
+          <p class="ai-empty-recs" v-else-if="!report.hasData">数据不足，暂不生成建议。</p>
+
+          <p class="ai-notes" v-for="(n, i) in report.notes" :key="i">· {{ n }}</p>
+
+          <!-- Chat -->
+          <section class="ai-chat">
+            <div class="ai-sec-head">
+              <span class="ai-sec-icon">💬</span><h3>追问 AI</h3>
+              <button v-if="chat.messages.length" class="ai-chat-clear" @click="clearChat" title="清空本次对话">清空</button>
+            </div>
+            <div class="ai-chat-log" v-if="chat.messages.length">
+              <div v-for="(m, i) in chat.messages" :key="i" :class="['ai-msg', m.role]">
+                <div class="ai-bubble">{{ m.text }}</div>
+                <div class="ai-cite" v-if="m.citations && m.citations.length">
+                  <span v-for="(c, j) in m.citations" :key="j">{{ c.module }} · {{ c.detail }}</span>
+                </div>
+              </div>
+              <div v-if="chat.sending" class="ai-msg ai"><div class="ai-bubble ai-typing">思考中…</div></div>
+            </div>
+            <div class="ai-quick">
+              <button v-for="q in quickQuestions" :key="q" @click="ask(q)" :disabled="chat.sending">{{ q }}</button>
+            </div>
+            <form class="ai-chat-form" @submit.prevent="ask()">
+              <input v-model="chat.question" placeholder="问问你的数据，例如：这个月花了多少钱？" />
+              <button class="btn-primary" type="submit" :disabled="chat.sending || !chat.question.trim()">发送</button>
+            </form>
+          </section>
+        </template>
+
+        <div v-else class="ai-empty">暂无报告，点击右上角「重新生成」。</div>
+      </div>
+
+      <!-- ========== 历史 ========== -->
+      <div v-else class="ai-history">
+        <div class="ai-hist-filters">
+          <div class="ai-filter-group">
+            <button v-for="t in [{k:'all',l:'全部'},{k:'daily',l:'日报'},{k:'weekly',l:'周报'},{k:'monthly',l:'月报'}]"
+                    :key="t.k" :class="['ai-chip', { active: histFilter.type === t.k }]"
+                    @click="setHistType(t.k)">{{ t.l }}</button>
+          </div>
+          <div class="ai-filter-group">
+            <button v-for="r in [{k:'all',l:'不限时间'},{k:'7',l:'近 7 天'},{k:'30',l:'近 30 天'},{k:'90',l:'近 90 天'}]"
+                    :key="r.k" :class="['ai-chip', { active: histFilter.range === r.k }]"
+                    @click="setHistRange(r.k)">{{ r.l }}</button>
+          </div>
+          <span class="ai-hist-count">{{ history.length }} 条</span>
+        </div>
+        <p class="ai-hist-tip">每次生成都会保留历史，不会覆盖旧报告。点击任意条目可重新打开。</p>
+        <ul class="ai-hist-list" v-if="history.length">
+          <li v-for="h in history" :key="h.id" @click="openReport(h.id)">
+            <span class="ai-hist-type" :class="'t-' + h.type">{{ h.type === 'daily' ? '日报' : h.type === 'weekly' ? '周报' : '月报' }}</span>
+            <div class="ai-hist-main">
+              <span class="ai-hist-title">{{ h.title }}</span>
+              <span class="ai-hist-headline">{{ h.headline }}</span>
+            </div>
+            <div class="ai-hist-side">
+              <span class="ai-hist-src" :class="'src-' + h.source">{{ h.source === 'ai' ? 'AI' : h.source === 'local-fallback' ? '兜底' : '本地' }}</span>
+              <span class="ai-hist-time">{{ fmtDate(h.generated_at) }} {{ fmtTime(h.generated_at) }}</span>
+            </div>
+          </li>
+        </ul>
+        <p v-else-if="histLoading" class="ai-empty">加载中…</p>
+        <p v-else class="ai-empty">当前筛选条件下没有报告。</p>
+      </div>
+
+      <!-- ========== 设置 ========== -->
+      <div class="ai-modal" v-if="showSettings" @click.self="showSettings = false">
+        <div class="ai-modal-card">
+          <div class="ai-modal-head">
+            <h3>AI 设置</h3>
+            <button class="del" @click="showSettings = false">✕</button>
+          </div>
+
+          <div class="ai-set-row">
+            <div>
+              <strong>AI 模型</strong>
+              <small>{{ status.configured ? '已连接：' + status.model : '未配置（使用本地分析引擎）' }}</small>
+            </div>
+            <span class="ai-set-state" :class="status.configured ? 'on' : 'off'">{{ status.configured ? '在线' : '本地' }}</span>
+          </div>
+
+          <div class="ai-set-group">
+            <p class="ai-set-label">数据源</p>
+            <label class="ai-switch" v-for="(v, k) in settings.sources" :key="k">
+              <input type="checkbox" v-model="settings.sources[k]" />
+              <span>{{ { todos: '待办', calendar: '日程', finance: '记账', lifestyle: '生活看板' }[k] }}</span>
+            </label>
+          </div>
+
+          <div class="ai-set-group">
+            <p class="ai-set-label">隐私</p>
+            <label class="ai-switch">
+              <input type="checkbox" v-model="settings.diaryEnabled" />
+              <span>启用日记分析</span>
+            </label>
+            <p class="ai-set-note">日记默认不参与分析。开启后仅统计主题词与心情分布，正文不会写入报告或普通通知。</p>
+          </div>
+
+          <div class="ai-set-row">
+            <div><strong>货币符号</strong><small>用于财务分析展示</small></div>
+            <input class="ai-set-input" v-model="settings.currency" maxlength="3" />
+          </div>
+
+          <div class="ai-set-row">
+            <div><strong>自动生成日报</strong><small>首次打开当天页面时自动生成</small></div>
+            <label class="ai-switch inline"><input type="checkbox" v-model="settings.autoGenerate" /><span></span></label>
+          </div>
+
+          <div class="ai-modal-actions">
+            <button class="pill-btn" @click="showSettings = false">取消</button>
+            <button class="btn-primary" @click="saveSettings">保存设置</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </script>
+
+  <script src="/vendor/vue.global.prod.js"></script>
+  <script src="/vendor/three/three.min.js"></script>
+  <script src="/core.js"></script>
+  <script src="/life.js"></script>
+  <script src="/ai.js"></script>
+  <script src="/companion/companion.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
